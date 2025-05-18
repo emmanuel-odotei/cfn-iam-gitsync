@@ -143,6 +143,7 @@ Resources:
           import boto3, json
 
           def handler(event, context):
+              print("Lambda triggered. Event received.")
               ssm = boto3.client('ssm')
               secrets = boto3.client('secretsmanager')
 
@@ -185,15 +186,28 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: NewIAMUserRule
+      Description: Trigger event when a new IAM user is created
       EventPattern:
         source:
           - "aws.iam"
         detail-type:
           - "AWS API Call via CloudTrail"
         detail:
+          eventSource:
+            - iam.amazonaws.com
           eventName:
             - CreateUser # Trigger only on CreateUser API calls
       Targets:
         - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
           Id: NotifyLambdaTarget
-      State: ENABLED
+
+  Outputs:
+  SecretARN:
+    Description: ARN of the secret containing the initial password
+    Value: !Ref OneTimePassword
+  LambdaFunctionARN:
+    Description: ARN of the Lambda function
+    Value: !GetAtt NotifyLambdaFunction.Arn
+  EventRuleARN:
+    Description: ARN of the EventBridge rule
+    Value: !GetAtt UserCreateEventRule.Arn
