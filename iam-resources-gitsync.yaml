@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Description: IAM automation with GitSync lab 2 - week 1
 
 Parameters:
@@ -13,7 +13,6 @@ Parameters:
     Default: ec2user@complete.com
 
 Resources:
-
   # Generate a one-time password in Secrets Manager to use for both IAM users
   OneTimePassword:
     Type: AWS::SecretsManager::Secret
@@ -21,8 +20,8 @@ Resources:
       Name: IAMUserTempPassword
       GenerateSecretString:
         PasswordLength: 16
-        ExcludeCharacters: '"@/\\'  # Exclude problematic characters
-        SecretStringTemplate: '{}'  # Creates an empty JSON string initially
+        ExcludeCharacters: '"@/\\' # Exclude problematic characters
+        SecretStringTemplate: "{}" # Creates an empty JSON string initially
         GenerateStringKey: password # The key to insert generated password into
 
   # IAM Group for S3 read-only access
@@ -42,19 +41,27 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
 
   # IAM User for S3 access
-  # S3User:
-  #   Type: AWS::IAM::User
-  #   Properties:
-  #     UserName: s3-user
-  #     Groups:
-  #       - !Ref S3Group  # Add user to S3 group
-  #     LoginProfile:
-  #       # Use the secret from Secrets Manager as the initial password
-  #       Password: !Join ['', ['{{resolve:secretsmanager:', !Ref OneTimePassword, ':SecretString:password}}']]
-  #       PasswordResetRequired: true
-  #     Tags:
-  #       - Key: email
-  #         Value: !Ref S3UserEmail
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: s3-user
+      Groups:
+        - !Ref S3Group # Add user to S3 group
+      LoginProfile:
+        # Use the secret from Secrets Manager as the initial password
+        Password:
+          !Join [
+            "",
+            [
+              "{{resolve:secretsmanager:",
+              !Ref OneTimePassword,
+              ":SecretString:password}}",
+            ],
+          ]
+        PasswordResetRequired: true
+      Tags:
+        - Key: email
+          Value: !Ref S3UserEmail
 
   # IAM User for EC2 access
   EC2User:
@@ -62,10 +69,18 @@ Resources:
     Properties:
       UserName: ec2-user
       Groups:
-        - !Ref EC2Group  # Add user to EC2 group
+        - !Ref EC2Group # Add user to EC2 group
       LoginProfile:
         # Use the same secret for the EC2 user
-        Password: !Join ['', ['{{resolve:secretsmanager:', !Ref OneTimePassword, ':SecretString:password}}']]
+        Password:
+          !Join [
+            "",
+            [
+              "{{resolve:secretsmanager:",
+              !Ref OneTimePassword,
+              ":SecretString:password}}",
+            ],
+          ]
         PasswordResetRequired: true
       Tags:
         - Key: email
@@ -99,9 +114,9 @@ Resources:
           - "AWS API Call via CloudTrail"
         detail:
           eventName:
-            - CreateUser  # Trigger only on CreateUser API calls
+            - CreateUser # Trigger only on CreateUser API calls
       Targets:
-        - Arn: !GetAtt NotifyLambdaFunction.Arn  # Send event to Lambda
+        - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
           Id: NotifyLambdaTarget
       State: ENABLED
 
@@ -111,7 +126,7 @@ Resources:
     Properties:
       RoleName: NotifyLambdaRole
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -120,7 +135,7 @@ Resources:
       Policies:
         - PolicyName: NotifyPolicy
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
@@ -138,7 +153,7 @@ Resources:
       FunctionName: NotifyNewUser
       Runtime: python3.12
       Handler: index.handler
-      Role: !GetAtt NotifyLambdaRole.Arn  # Lambda assumes this role
+      Role: !GetAtt NotifyLambdaRole.Arn # Lambda assumes this role
       Code:
         ZipFile: |
           import boto3, json, logging
