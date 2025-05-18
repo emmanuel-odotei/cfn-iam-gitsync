@@ -1,5 +1,5 @@
 template-file-path: iam-resources-gitsync.yaml
 parameters:
-  S3UserEmail: s3user1@completed.com
-  EC2UserEmail: ec2user1@completed.com
+  S3UserEmail: s3user@completed.com
+  EC2UserEmail: ec2user@completed.com
 tags: {}
