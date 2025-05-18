@@ -41,27 +41,27 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
 
   # # IAM User for S3 access
-  # S3User:
-  #   Type: AWS::IAM::User
-  #   Properties:
-  #     UserName: s3-user
-  #     Groups:
-  #       - !Ref S3Group # Add user to S3 group
-  #     LoginProfile:
-  #       # Use the secret from Secrets Manager as the initial password
-  #       Password:
-  #         !Join [
-  #           "",
-  #           [
-  #             "{{resolve:secretsmanager:",
-  #             !Ref OneTimePassword,
-  #             ":SecretString:password}}",
-  #           ],
-  #         ]
-  #       PasswordResetRequired: true
-  #     Tags:
-  #       - Key: email
-  #         Value: !Ref S3UserEmail
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: s3-user
+      Groups:
+        - !Ref S3Group # Add user to S3 group
+      LoginProfile:
+        # Use the secret from Secrets Manager as the initial password
+        Password:
+          !Join [
+            "",
+            [
+              "{{resolve:secretsmanager:",
+              !Ref OneTimePassword,
+              ":SecretString:password}}",
+            ],
+          ]
+        PasswordResetRequired: true
+      Tags:
+        - Key: email
+          Value: !Ref S3UserEmail
 
   # IAM User for EC2 access
   EC2User:
