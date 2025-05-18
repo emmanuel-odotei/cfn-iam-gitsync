@@ -5,12 +5,12 @@ Parameters:
   # Email address for the S3 user
   S3UserEmail:
     Type: String
-    Default: s3user@mylabs.com
+    Default: s3user@complete.com
 
   # Email address for the EC2 user
   EC2UserEmail:
     Type: String
-    Default: ec2user@mylabs.com
+    Default: ec2user@complete.com
 
 Resources:
 
