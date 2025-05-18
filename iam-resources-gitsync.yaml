@@ -201,7 +201,7 @@ Resources:
         - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
           Id: NotifyLambdaTarget
 
-  Outputs:
+Outputs:
   SecretARN:
     Description: ARN of the secret containing the initial password
     Value: !Ref OneTimePassword
