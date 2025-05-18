@@ -102,24 +102,6 @@ Resources:
       Type: String
       Value: !Ref EC2UserEmail
 
-  # EventBridge rule to detect when a new IAM user is created
-  UserCreateEventRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: NewIAMUserRule
-      EventPattern:
-        source:
-          - "aws.iam"
-        detail-type:
-          - "AWS API Call via CloudTrail"
-        detail:
-          eventName:
-            - CreateUser # Trigger only on CreateUser API calls
-      Targets:
-        - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
-          Id: NotifyLambdaTarget
-      State: ENABLED
-
   # IAM role that allows Lambda to log and access SSM & Secrets Manager
   NotifyLambdaRole:
     Type: AWS::IAM::Role
@@ -132,6 +114,8 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: NotifyPolicy
           PolicyDocument:
@@ -156,30 +140,60 @@ Resources:
       Role: !GetAtt NotifyLambdaRole.Arn # Lambda assumes this role
       Code:
         ZipFile: |
-          import boto3, json, logging
-
-          logger = logging.getLogger()
-          logger.setLevel(logging.INFO)
+          import boto3, json
 
           def handler(event, context):
               ssm = boto3.client('ssm')
               secrets = boto3.client('secretsmanager')
-              detail = event['detail']
-              user = detail.get('requestParameters', {}).get('userName')
+
+              print("Received event:", json.dumps(event))
+
+              user = None
+              try:
+                  user = event['detail']['requestParameters']['userName']
+              except KeyError:
+                  user = 's3-user'  # Default fallback if event doesn't include user
 
               # Get user's email from SSM Parameter Store
               email_param = f"/iam/{user}/email"
               try:
                   email = ssm.get_parameter(Name=email_param)['Parameter']['Value']
-              except:
-                  email = "Not found"
+              except Exception as e:
+                  email = f"Not found ({str(e)})"
 
               # Get temporary password from Secrets Manager
               try:
                   secret = secrets.get_secret_value(SecretId='IAMUserTempPassword')
                   password = json.loads(secret['SecretString'])['password']
-              except:
-                  password = "Unavailable"
+              except Exception as e:
+                  password = f"Unavailable ({str(e)})"
 
-              logger.info(f"New IAM user created: {user}")
-              logger.info(f"Email: {email}, Temporary Password: {password}")
+              print(f"New IAM user created: {user}")
+              print(f"Email: {email}, Temporary Password: {password}")
+
+  # Permission for EventBridge to invoke the Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt NotifyLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt UserCreateEventRule.Arn
+
+  # EventBridge rule to detect when a new IAM user is created
+  UserCreateEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: NewIAMUserRule
+      EventPattern:
+        source:
+          - "aws.iam"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventName:
+            - CreateUser # Trigger only on CreateUser API calls
+      Targets:
+        - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
+          Id: NotifyLambdaTarget
+      State: ENABLED
