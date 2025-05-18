@@ -90,7 +90,7 @@ Resources:
   S3UserEmailParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /iam/s3-user/email
+      Name: /iam/s3user/email
       Type: String
       Value: !Ref S3UserEmail
 
@@ -98,7 +98,7 @@ Resources:
   EC2UserEmailParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /iam/ec2-user/email
+      Name: /iam/ec2user/email
       Type: String
       Value: !Ref EC2UserEmail
 
