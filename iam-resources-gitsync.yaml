@@ -5,12 +5,12 @@ Parameters:
   # Email address for the S3 user
   S3UserEmail:
     Type: String
-    Default: s3user1@completed.com
+    Default: s3user@completed.com
 
   # Email address for the EC2 user
   EC2UserEmail:
     Type: String
-    Default: ec2user1@completed.com
+    Default: ec2user@completed.com
 
 Resources:
   # Generate a one-time password in Secrets Manager to use for both IAM users
