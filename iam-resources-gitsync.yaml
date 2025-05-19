@@ -195,7 +195,7 @@ Outputs:
     Description: ARN of the password secret for new users
     Value: !Ref OneTimePasswordSecret
   LoggerFunctionARN:
-    Description: ARN of the Lambda function handling user provisioning logs
+    Description: ARN of the Lambda function handling user creation logs
     Value: !GetAtt UserCreationLoggerFunction.Arn
   EventBridgeRuleARN:
     Description: ARN of the rule triggering on IAM CreateUser events
