@@ -4,16 +4,16 @@ Description: "Provision IAM Users with Secure OTP, Group Access, and Audit Notif
 Parameters:
   WebAppUserEmail:
     Type: String
-    Description: Email address for the webapp-user
+    Description: Email address for the ec2User
     Default: ec2_user@example.com
   StorageUserEmail:
     Type: String
-    Description: Email address for the storage-user
+    Description: Email address for the s3User
     Default: s3_user@example.com
 
 Resources:
   # One-Time Password stored in Secrets Manager
-  InitialUserPasswordSecret:
+  OneTimePasswordSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: initial-iam-password
@@ -29,10 +29,10 @@ Resources:
           Value: UserProvisioning
 
   # IAM Group for read-only S3 accesss
-  StorageAccessGroup:
+  S3UserGroup:
     Type: AWS::IAM::Group
     Properties:
-      GroupName: StorageAccessGroup
+      GroupName: S3UserGroup
       Policies:
         - PolicyName: S3ViewOnlyPolicy
           PolicyDocument:
@@ -45,10 +45,10 @@ Resources:
                 Resource: "*"
 
   # IAM Group for EC2 describe access
-  ComputeAccessGroup:
+  EC2UserGroup:
     Type: AWS::IAM::Group
     Properties:
-      GroupName: ComputeAccessGroup
+      GroupName: EC2UserGroup
       Policies:
         - PolicyName: EC2InfoAccessPolicy
           PolicyDocument:
@@ -60,45 +60,45 @@ Resources:
                   - ec2:Get*
                 Resource: "*"
 
-  # IAM User for compute workloads
+  # IAM User for compute workloads - EC2
   WebAppUser:
     Type: AWS::IAM::User
     Properties:
-      UserName: webapp-user
+      UserName: ec2User
       Groups:
-        - !Ref ComputeAccessGroup
+        - !Ref EC2UserGroup
       LoginProfile:
-        Password: !Sub "{{resolve:secretsmanager:${InitialUserPasswordSecret}::password}}"
+        Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
         PasswordResetRequired: true
 
   # SSM Parameter to store webapp user's email
   WebAppUserEmailParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /provisioned-users/webapp-user/email
+      Name: /provisioned-users/ec2User/email
       Type: String
       Value: !Ref WebAppUserEmail
-      Description: Registered email for webapp-user
+      Description: Registered email for ec2User
 
   # IAM User for storage workloads
   StorageUser:
     Type: AWS::IAM::User
     Properties:
-      UserName: storage-user
+      UserName: s3User
       Groups:
-        - !Ref StorageAccessGroup
+        - !Ref S3UserGroup
       LoginProfile:
-        Password: !Sub "{{resolve:secretsmanager:${InitialUserPasswordSecret}::password}}"
+        Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
         PasswordResetRequired: true
 
   # SSM Parameter to store storage user's email
   StorageUserEmailParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /provisioned-users/storage-user/email
+      Name: /provisioned-users/s3User/email
       Type: String
       Value: !Ref StorageUserEmail
-      Description: Registered email for storage-user
+      Description: Registered email for s3User
 
   # IAM Role for Lambda with read access to Parameters and Secrets
   LambdaHandlerRole:
@@ -125,13 +125,13 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Ref InitialUserPasswordSecret
+                Resource: !Ref OneTimePasswordSecret
 
   # Lambda function to log user creation events
-  UserProvisioningLogger:
+  UserCreationLoggerFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: UserProvisionLogger
+      FunctionName: UserCreationLambda
       Handler: index.handler
       Runtime: python3.8
       Role: !GetAtt LambdaHandlerRole.Arn
@@ -163,10 +163,10 @@ Resources:
               }
 
   # Allow EventBridge to invoke Lambda
-  ProvisionLoggerPermission:
+  EventBridgeLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt UserProvisioningLogger.Arn
+      FunctionName: !GetAtt UserCreationLoggerFunction.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt IAMUserEventRule.Arn
@@ -187,16 +187,16 @@ Resources:
           eventName:
             - CreateUser
       Targets:
-        - Arn: !GetAtt UserProvisioningLogger.Arn
+        - Arn: !GetAtt UserCreationLoggerFunction.Arn
           Id: UserCreationTarget
 
 Outputs:
   PasswordSecretARN:
     Description: ARN of the password secret for new users
-    Value: !Ref InitialUserPasswordSecret
+    Value: !Ref OneTimePasswordSecret
   LoggerFunctionARN:
     Description: ARN of the Lambda function handling user provisioning logs
-    Value: !GetAtt UserProvisioningLogger.Arn
+    Value: !GetAtt UserCreationLoggerFunction.Arn
   EventBridgeRuleARN:
     Description: ARN of the rule triggering on IAM CreateUser events
     Value: !GetAtt IAMUserEventRule.Arn
