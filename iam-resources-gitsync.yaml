@@ -1,112 +1,109 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: IAM automation with GitSync lab 2 - week 1
+Description: "Provision IAM Users with Secure OTP, Group Access, and Audit Notifications via EventBridge"
 
 Parameters:
-  # Email address for the S3 user
-  S3UserEmail:
+  WebAppUserEmail:
     Type: String
-    Default: s3user@completed.com
-
-  # Email address for the EC2 user
-  EC2UserEmail:
+    Description: Email address for the webapp-user
+    Default: ec2_user@example.com
+  StorageUserEmail:
     Type: String
-    Default: ec2user@completed.com
+    Description: Email address for the storage-user
+    Default: s3_user@example.com
 
 Resources:
-  # Generate a one-time password in Secrets Manager to use for both IAM users
-  OneTimePassword:
+  # One-Time Password stored in Secrets Manager
+  InitialUserPasswordSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: IAMUserTempPassword
+      Name: initial-iam-password
+      Description: Auto-generated password for new IAM users
       GenerateSecretString:
-        PasswordLength: 8
-        ExcludeCharacters: '"@/\\' # Exclude problematic characters
-        SecretStringTemplate: "{}" # Creates an empty JSON string initially
-        GenerateStringKey: password # The key to insert generated password into
+        SecretStringTemplate: "{}"
+        GenerateStringKey: password
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Component
+          Value: UserProvisioning
 
-  # IAM Group for S3 read-only access
-  S3Group:
+  # IAM Group for read-only S3 access
+  StorageAccessGroup:
     Type: AWS::IAM::Group
     Properties:
-      GroupName: S3BucketReadOnlyGroup
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      GroupName: StorageAccessGroup
+      Policies:
+        - PolicyName: S3ViewOnlyPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:Get*
+                  - s3:List*
+                Resource: "*"
 
-  # IAM Group for EC2 read-only access
-  EC2Group:
+  # IAM Group for EC2 describe access
+  ComputeAccessGroup:
     Type: AWS::IAM::Group
     Properties:
-      GroupName: Ec2ReadOnlyGroup
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+      GroupName: ComputeAccessGroup
+      Policies:
+        - PolicyName: EC2InfoAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:Describe*
+                  - ec2:Get*
+                Resource: "*"
 
-  # IAM User for S3 access
-  S3User:
+  # IAM User for compute workloads
+  WebAppUser:
     Type: AWS::IAM::User
     Properties:
-      UserName: s3-user
+      UserName: webapp-user
       Groups:
-        - !Ref S3Group # Add user to S3 group
+        - !Ref ComputeAccessGroup
       LoginProfile:
-        # Use the secret from Secrets Manager as the initial password
-        Password:
-          !Join [
-            "",
-            [
-              "{{resolve:secretsmanager:",
-              !Ref OneTimePassword,
-              ":SecretString:password}}",
-            ],
-          ]
+        Password: !Sub "{{resolve:secretsmanager:${InitialUserPasswordSecret}::password}}"
         PasswordResetRequired: true
-      Tags:
-        - Key: email
-          Value: !Ref S3UserEmail
 
-  # IAM User for EC2 access
-  EC2User:
+  # SSM Parameter to store webapp user's email
+  WebAppUserEmailParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /provisioned-users/webapp-user/email
+      Type: String
+      Value: !Ref WebAppUserEmail
+      Description: Registered email for webapp-user
+
+  # IAM User for storage workloads
+  StorageUser:
     Type: AWS::IAM::User
     Properties:
-      UserName: ec2-user
+      UserName: storage-user
       Groups:
-        - !Ref EC2Group # Add user to EC2 group
+        - !Ref StorageAccessGroup
       LoginProfile:
-        # Use the same secret for the EC2 user
-        Password:
-          !Join [
-            "",
-            [
-              "{{resolve:secretsmanager:",
-              !Ref OneTimePassword,
-              ":SecretString:password}}",
-            ],
-          ]
+        Password: !Sub "{{resolve:secretsmanager:${InitialUserPasswordSecret}::password}}"
         PasswordResetRequired: true
-      Tags:
-        - Key: email
-          Value: !Ref EC2UserEmail
 
-  # Store S3 user's email in SSM Parameter Store
-  S3UserEmailParam:
+  # SSM Parameter to store storage user's email
+  StorageUserEmailParam:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /iam/s3user/email
+      Name: /provisioned-users/storage-user/email
       Type: String
-      Value: !Ref S3UserEmail
+      Value: !Ref StorageUserEmail
+      Description: Registered email for storage-user
 
-  # Store EC2 user's email in SSM Parameter Store
-  EC2UserEmailParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: /iam/ec2user/email
-      Type: String
-      Value: !Ref EC2UserEmail
-
-  # IAM role that allows Lambda to log and access SSM & Secrets Manager
-  NotifyLambdaRole:
+  # IAM Role for Lambda with read access to Parameters and Secrets
+  LambdaHandlerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: NotifyLambdaRole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -117,97 +114,89 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: NotifyPolicy
+        - PolicyName: LambdaAccessPolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
                   - ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/provisioned-users/*
+              - Effect: Allow
+                Action:
                   - secretsmanager:GetSecretValue
-                Resource: "*"
+                Resource: !Ref InitialUserPasswordSecret
 
-  # Lambda function that logs new IAM user creation events
-  NotifyLambdaFunction:
+  # Lambda function to log user creation events
+  UserProvisioningLogger:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: NotifyNewUser
-      Runtime: python3.12
+      FunctionName: UserProvisionLogger
       Handler: index.handler
-      Role: !GetAtt NotifyLambdaRole.Arn # Lambda assumes this role
+      Runtime: python3.8
+      Role: !GetAtt LambdaHandlerRole.Arn
       Code:
         ZipFile: |
-          import boto3, json
+          import boto3
 
           def handler(event, context):
-              print("Lambda triggered. Event received.")
+              username = event['detail']['requestParameters']['userName']
               ssm = boto3.client('ssm')
               secrets = boto3.client('secretsmanager')
 
-              print("Received event:", json.dumps(event))
+              email_param = ssm.get_parameter(
+                  Name=f'/provisioned-users/{username}/email',
+                  WithDecryption=False
+              )
+              email = email_param['Parameter']['Value']
 
-              user = None
-              try:
-                  user = event['detail']['requestParameters']['userName']
-              except KeyError:
-                  user = 's3-user'  # Default fallback if event doesn't include user
+              secret = secrets.get_secret_value(SecretId='initial-iam-password')
+              otp = secret['SecretString']
 
-              # Get user's email from SSM Parameter Store
-              email_param = f"/iam/{user}/email"
-              try:
-                  email = ssm.get_parameter(Name=email_param)['Parameter']['Value']
-              except Exception as e:
-                  email = f"Not found ({str(e)})"
+              print(f"[New User Created] Username: {username}")
+              print(f"Email: {email}")
+              print(f"Temporary Password: {otp}")
 
-              # Get temporary password from Secrets Manager
-              try:
-                  secret = secrets.get_secret_value(SecretId='IAMUserTempPassword')
-                  password = json.loads(secret['SecretString'])['password']
-              except Exception as e:
-                  password = f"Unavailable ({str(e)})"
+              return {
+                  'statusCode': 200,
+                  'body': f"User {username} processed successfully."
+              }
 
-              print(f"New IAM user created: {user}")
-              print(f"Email: {email}, Temporary Password: {password}")
-
-  # Permission for EventBridge to invoke the Lambda
-  LambdaInvokePermission:
+  # Allow EventBridge to invoke Lambda
+  ProvisionLoggerPermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt NotifyLambdaFunction.Arn
+      FunctionName: !GetAtt UserProvisioningLogger.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
-      SourceArn: !GetAtt UserCreateEventRule.Arn
+      SourceArn: !GetAtt IAMUserEventRule.Arn
 
-  # EventBridge rule to detect when a new IAM user is created
-  UserCreateEventRule:
+  # EventBridge rule to catch CreateUser API calls
+  IAMUserEventRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: NewIAMUserRule
-      Description: Trigger event when a new IAM user is created
+      Description: Fire on new IAM user creation
       EventPattern:
         source:
-          - "aws.iam"
+          - aws.iam
         detail-type:
-          - "AWS API Call via CloudTrail"
+          - AWS API Call via CloudTrail
         detail:
           eventSource:
             - iam.amazonaws.com
           eventName:
-            - CreateUser # Trigger only on CreateUser API calls
+            - CreateUser
       Targets:
-        - Arn: !GetAtt NotifyLambdaFunction.Arn # Send event to Lambda
-          Id: NotifyLambdaTarget
+        - Arn: !GetAtt UserProvisioningLogger.Arn
+          Id: UserCreationTarget
 
 Outputs:
-  SecretARN:
-    Description: ARN of the secret containing the initial password
-    Value: !Ref OneTimePassword
-  LambdaFunctionARN:
-    Description: ARN of the Lambda function
-    Value: !GetAtt NotifyLambdaFunction.Arn
-  EventRuleARN:
-    Description: ARN of the EventBridge rule
-    Value: !GetAtt UserCreateEventRule.Arn
+  PasswordSecretARN:
+    Description: ARN of the password secret for new users
+    Value: !Ref InitialUserPasswordSecret
+  LoggerFunctionARN:
+    Description: ARN of the Lambda function handling user provisioning logs
+    Value: !GetAtt UserProvisioningLogger.Arn
+  EventBridgeRuleARN:
+    Description: ARN of the rule triggering on IAM CreateUser events
+    Value: !GetAtt IAMUserEventRule.Arn
