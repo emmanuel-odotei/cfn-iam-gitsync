@@ -28,7 +28,7 @@ Resources:
         - Key: Component
           Value: UserProvisioning
 
-  # IAM Group for read-only S3 access
+  # IAM Group for read-only S3 accesss
   StorageAccessGroup:
     Type: AWS::IAM::Group
     Properties:

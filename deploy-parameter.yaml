@@ -1,5 +1,0 @@
-template-file-path: iam-resources-gitsync.yaml
-parameters:
-  StorageUserEmail: s3_user@example.com
-  WebAppUserEmail: ec2_user@example.com
-tags: {}
