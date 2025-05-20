@@ -81,15 +81,15 @@ Resources:
       Description: Registered email for ec2User
 
   # IAM User for storage workloads
-  # StorageUser:
-  #   Type: AWS::IAM::User
-  #   Properties:
-  #     UserName: s3User
-  #     Groups:
-  #       - !Ref S3UserGroup
-  #     LoginProfile:
-  #       Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
-  #       PasswordResetRequired: true
+  StorageUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: s3User
+      Groups:
+        - !Ref S3UserGroup
+      LoginProfile:
+        Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
+        PasswordResetRequired: true
 
   # SSM Parameter to store storage user's email
   StorageUserEmailParam:
