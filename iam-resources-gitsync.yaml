@@ -61,24 +61,24 @@ Resources:
                 Resource: "*"
 
   # IAM User for compute workloads - EC2
-  WebAppUser:
-    Type: AWS::IAM::User
-    Properties:
-      UserName: ec2User
-      Groups:
-        - !Ref EC2UserGroup
-      LoginProfile:
-        Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
-        PasswordResetRequired: true
+  # WebAppUser:
+  #   Type: AWS::IAM::User
+  #   Properties:
+  #     UserName: ec2User
+  #     Groups:
+  #       - !Ref EC2UserGroup
+  #     LoginProfile:
+  #       Password: !Sub "{{resolve:secretsmanager:${OneTimePasswordSecret}::password}}"
+  #       PasswordResetRequired: true
 
   # SSM Parameter to store webapp user's email
-  WebAppUserEmailParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: /provisioned-users/ec2User/email
-      Type: String
-      Value: !Ref WebAppUserEmail
-      Description: Registered email for ec2User
+  # WebAppUserEmailParam:
+  #   Type: AWS::SSM::Parameter
+  #   Properties:
+  #     Name: /provisioned-users/ec2User/email
+  #     Type: String
+  #     Value: !Ref WebAppUserEmail
+  #     Description: Registered email for ec2User
 
   # IAM User for storage workloads
   StorageUser:
